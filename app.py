@@ -3,7 +3,6 @@ import os
 
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.chains.retrieval_qa.base import RetrievalQA
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 # ------------------ UI SETUP ------------------
@@ -26,12 +25,11 @@ if not os.path.exists("mech_vector_db"):
     st.info("📥 Downloading knowledge base (first time setup)... Please wait ⏳")
     
     import gdown
-    
     folder_url = "https://drive.google.com/drive/folders/1Yd55ag9r83Fkmf55Kmro-yK_o06dNfqn?usp=sharing"
     
     gdown.download_folder(folder_url, quiet=False)
 
-# ------------------ LOAD EMBEDDING ------------------
+# ------------------ LOAD EMBEDDINGS ------------------
 @st.cache_resource
 def load_embedding():
     return HuggingFaceEmbeddings(
@@ -50,7 +48,6 @@ def load_vectorstore():
     )
 
 vectorstore = load_vectorstore()
-
 retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
 
 # ------------------ LLM ------------------
@@ -59,31 +56,50 @@ llm = ChatGoogleGenerativeAI(
     temperature=0.2
 )
 
-# ------------------ RAG CHAIN ------------------
-qa = RetrievalQA.from_chain_type(
-    llm=llm,
-    retriever=retriever,
-    return_source_documents=True
-)
-
 # ------------------ CHAT MEMORY ------------------
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
+
+# ------------------ PROMPT TEMPLATE ------------------
+def build_prompt(query, docs):
+    context = "\n\n".join([doc.page_content for doc in docs])
+    
+    prompt = f"""
+You are a Mechanical Engineering expert assistant.
+
+Use the following context from textbooks to answer the question accurately.
+
+Context:
+{context}
+
+Question:
+{query}
+
+Instructions:
+- Give clear and structured explanation
+- Use engineering terminology
+- If possible, include formulas
+- Keep answer concise but informative
+"""
+    return prompt
 
 # ------------------ INPUT ------------------
 query = st.chat_input("💬 Ask your Mechanical Engineering question...")
 
 if query:
     with st.spinner("Thinking..."):
-        result = qa({"query": query})
         
-        answer = result["result"]
-        sources = result["source_documents"]
+        docs = retriever.get_relevant_documents(query)
+        
+        prompt = build_prompt(query, docs)
+        
+        response = llm.invoke(prompt)
+        answer = response.content
 
-        st.session_state.chat_history.append((query, answer, sources))
+        st.session_state.chat_history.append((query, answer, docs))
 
 # ------------------ DISPLAY ------------------
-for q, a, srcs in st.session_state.chat_history:
+for q, a, docs in st.session_state.chat_history:
     with st.chat_message("user"):
         st.write(q)
     
@@ -91,7 +107,7 @@ for q, a, srcs in st.session_state.chat_history:
         st.write(a)
 
         st.markdown("### 📚 Sources")
-        for doc in srcs[:3]:
+        for doc in docs[:3]:
             st.write(
                 f"• {doc.metadata.get('book_name', 'Unknown')} "
                 f"(Page {doc.metadata.get('page', '-')})"
