@@ -56,18 +56,14 @@ llm = ChatGoogleGenerativeAI(
     temperature=0.2
 )
 
-# ------------------ CHAT MEMORY ------------------
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-
-# ------------------ PROMPT TEMPLATE ------------------
+# ------------------ PROMPT BUILDER ------------------
 def build_prompt(query, docs):
     context = "\n\n".join([doc.page_content for doc in docs])
     
     prompt = f"""
-You are a Mechanical Engineering expert assistant.
+You are an expert Mechanical Engineering assistant.
 
-Use the following context from textbooks to answer the question accurately.
+Use the following textbook context to answer accurately.
 
 Context:
 {context}
@@ -78,10 +74,14 @@ Question:
 Instructions:
 - Give clear and structured explanation
 - Use engineering terminology
-- If possible, include formulas
+- Include formulas if applicable
 - Keep answer concise but informative
 """
     return prompt
+
+# ------------------ CHAT MEMORY ------------------
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
 # ------------------ INPUT ------------------
 query = st.chat_input("💬 Ask your Mechanical Engineering question...")
@@ -89,7 +89,7 @@ query = st.chat_input("💬 Ask your Mechanical Engineering question...")
 if query:
     with st.spinner("Thinking..."):
         
-        docs = retriever.get_relevant_documents(query)
+        docs = retriever.invoke(query)   # ✅ FIXED
         
         prompt = build_prompt(query, docs)
         
